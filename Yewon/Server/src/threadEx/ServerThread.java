@@ -39,139 +39,71 @@ public class ServerThread extends Thread {
 				//message 파싱!
 				String[] msg = str.split("/");
 				
+				String code = msg[0];
+				String roomName = msg[1];
+				String id = msg[2];
+				
 				//lobby로 첫 입장
-				if(msg[0].equals("enter")) {
-					if(rooms.containsKey(msg[1])) {
-						List<Member> members = rooms.get(msg[1]);
-						members.add(new Member(socket, msg[2]));
-						rooms.put(msg[1], members);
-					}
-					else {
-						List<Member> members = new ArrayList<>();
-						members.add(new Member(socket, msg[2]));
-						rooms.put(msg[1], members);
-					}
+				if(code.equals("enter")) {
+					//채팅방이 있으면 입장, 없으면 생성
+					findRoom(roomName, id);
 					
 					//main에 있는 member 리스트
-					String memList = "";
-					List<Member> members = rooms.get("main");
-					for(Member m : members) {
-						memList += m.id+":";
-					}
-					//main member 전송
-					for(String key : rooms.keySet()) {
-						List<Member> mems = rooms.get(key);
-						for(Member m : mems) {
-							PrintWriter writer = new PrintWriter(m.socket.getOutputStream());
-							writer.println("fsmember/main/"+memList);
-							writer.flush();
-						}
-					}
+					String memList = makeMemberList(roomName);
+					sendToAll("fsmember", "main", memList);
+
 					Thread.sleep(300);
 					
 					//room 리스트
-					String roomList = "";
-					for(String key : rooms.keySet()) {
-						if(key.equals("main"))
-							continue;
-						roomList += key+":";
-					}
-					//room 리스트 전송
-					for(String key : rooms.keySet()) {
-						List<Member> mems = rooms.get(key);
-						for(Member m : mems) {
-							PrintWriter writer = new PrintWriter(m.socket.getOutputStream());
-							writer.println("fsroom/"+roomList);
-							writer.flush();
-						}
-					}				
+					String roomList = makeRoomList();
+					sendToAll("fsroom", null, roomList);
+			
 				}
 				//message 전송
-				else if(msg[0].equals("msg")) {
-					String newMsg = "["+msg[2]+"] "+msg[3];
+				else if(code.equals("msg")) {
+					String newMsg = "["+id+"] "+msg[3];
 					
-					List<Member> members = rooms.get(msg[1]);
-					for(int i=0; i<members.size(); i++) {
-						PrintWriter writer = new PrintWriter(members.get(i).socket.getOutputStream());
-						writer.println("fsmsg/"+msg[1]+"/"+newMsg);
-						writer.flush();
-					}
+					sendToMember("fsmsg", roomName, newMsg);
 				}
 				//room 생성
-				else if(msg[0].equals("room")) {
-					if(rooms.containsKey(msg[1])) {
-						List<Member> members = rooms.get(msg[1]);
-						members.add(new Member(socket, msg[2]));
-						rooms.put(msg[1], members);
-					}
-					else {
-						List<Member> members = new ArrayList<>();
-						members.add(new Member(socket, msg[2]));
-						rooms.put(msg[1], members);
-					}
+				else if(code.equals("room")) {
+					//채팅방이 있으면 입장, 없으면 생성
+					findRoom(roomName, id);
 					
 					//현재 방 멤버 리스트
-					List<Member> roomMember = rooms.get(msg[1]);
-					String memList = "";
-					for(int i=0; i<roomMember.size(); i++) {
-						memList += roomMember.get(i).id+":";
-					}
-					//현재 방 멤버 리스트 전송
-					for(int i=0; i<roomMember.size(); i++) {
-						PrintWriter writer = new PrintWriter(roomMember.get(i).socket.getOutputStream());
-						writer.println("fsmember/"+msg[1]+"/"+memList);
-						writer.flush();
-					}
+					String memList = makeMemberList(roomName);
+					sendToMember("fsmember", roomName, memList);
+
 					Thread.sleep(300);
 
 					//main에서 현재 사람 제거
 					List<Member> mainMember = rooms.get("main");
 					for(int i=0; i<mainMember.size(); i++) {
-						if(mainMember.get(i).id.equals(msg[2])) {
+						if(mainMember.get(i).id.equals(id)) {
 							mainMember.remove(i);
 							break;
 						}
 					}
 					rooms.put("main", mainMember);
+					
 					//main방 멤버 리스트 전송
-					memList = "";
-					for(int i=0; i<mainMember.size(); i++) {
-						memList += mainMember.get(i).id+":";
-					}
-					for(String key : rooms.keySet()) {
-						List<Member> mems = rooms.get(key);
-						for(Member m : mems) {
-							PrintWriter writer = new PrintWriter(m.socket.getOutputStream());
-							writer.println("fsmember/main/"+memList);
-							writer.flush();
-						}
-					}
+					memList = makeMemberList("main");
+					sendToAll("fsmember", "main", memList);
+
 					Thread.sleep(300);
 					
 					//방 리스트
-					String roomList = "";
-					for(String key : rooms.keySet()) {
-						if(key.equals("main"))
-							continue;
-						roomList += key+":";
-					}
-					//방 리스트 전송
-					for(String key : rooms.keySet()) {
-						List<Member> mems = rooms.get(key);
-						for(Member m : mems) {
-							PrintWriter writer = new PrintWriter(m.socket.getOutputStream());
-							writer.println("fsroom/"+roomList);
-							writer.flush();
-						}
-					}
+					String roomList = makeRoomList();
+					sendToAll("fsroom", null, roomList);
+
 				}
 				//퇴장
-				else if(msg[0].equals("exit")) {
-					if(msg[1].equals("main")) {
+				else if(code.equals("exit")) {
+					if(roomName.equals("main")) {
 						//main에서 현재 사람 제거
 						List<Member> mainMember = rooms.get("main");
 						for(int i=0; i<mainMember.size(); i++) {
-							if(mainMember.get(i).id.equals(msg[2])) {
+							if(mainMember.get(i).id.equals(id)) {
 								mainMember.remove(i);
 								break;
 							}
@@ -179,65 +111,34 @@ public class ServerThread extends Thread {
 						rooms.put("main", mainMember);
 						
 						//main에 있는 멤버 리스트
-						String memList = "";
-						for(int i=0; i<mainMember.size(); i++) {
-							memList += mainMember.get(i).id+":";
-						}
-						//main member 리스트 전송
-						for(String key : rooms.keySet()) {
-							List<Member> mems = rooms.get(key);
-							for(Member m : mems) {
-								PrintWriter writer = new PrintWriter(m.socket.getOutputStream());
-								writer.println("fsmember/main/"+memList);
-								writer.flush();
-							}
-						}
+						String memList = makeMemberList("main");
+						sendToAll("fsmember", "main", memList);
 					}
 					else {
 						//현재 방에서 현재 사람 제거
-						List<Member> member = rooms.get(msg[1]);
+						List<Member> member = rooms.get(roomName);
 						for(int i=0; i<member.size(); i++) {
-							if(member.get(i).id.equals(msg[2])) {
+							if(member.get(i).id.equals(id)) {
 								member.remove(i);
 								break;
 							}
 						}
-						rooms.put(msg[1], member);
+						rooms.put(roomName, member);
 						
 						//현재 방 멤버 리스트
-						String memList = "";
-						for(int i=0; i<member.size(); i++) {
-							memList += member.get(i).id+":";
-						}
-						//현재 방 멤버 리스트 전송
-						for(int i=0; i<member.size(); i++) {
-							PrintWriter writer = new PrintWriter(member.get(i).socket.getOutputStream());
-							writer.println("fsmember/"+msg[1]+"/"+memList);
-							writer.flush();
-						}
+						String memList = makeMemberList(roomName);
+						sendToMember("fsmember", roomName, memList);
+
 						Thread.sleep(300);
-						
 						
 						//main에 추가
 						List<Member> mainMember = rooms.get("main");
-						mainMember.add(new Member(socket, msg[2]));
+						mainMember.add(new Member(socket, id));
 						rooms.put("main", mainMember);
 						
 						//main 멤버 리스트
-						memList = "";
-						for(int i=0; i<mainMember.size(); i++) {
-							memList += mainMember.get(i).id+":";
-						}
-						//main 멤버 리스트 전송
-						for(String key : rooms.keySet()) {
-							List<Member> mems = rooms.get(key);
-							for(Member m : mems) {
-								PrintWriter writer = new PrintWriter(m.socket.getOutputStream());
-								writer.println("fsmember/main/"+memList);
-								writer.flush();
-							}
-						}
-						
+						memList = makeMemberList("main");
+						sendToAll("fsmember", "main", memList);
 					}
 				}
 				
@@ -252,6 +153,69 @@ public class ServerThread extends Thread {
 			for(Socket s : list) {
 				System.out.println("접속되어 있는 IP :"+s.getInetAddress());
 			}
+		}
+	}
+	
+	public void findRoom(String roomName, String id) {
+		if(rooms.containsKey(roomName)) {
+			List<Member> members = rooms.get(roomName);
+			members.add(new Member(socket, id));
+			rooms.put(roomName, members);
+		}
+		else {
+			List<Member> members = new ArrayList<>();
+			members.add(new Member(socket, id));
+			rooms.put(roomName, members);
+		}
+	}
+	
+	public String makeMemberList(String roomName) {
+		String memList = "";
+		List<Member> members = rooms.get(roomName);
+		for(Member m : members) {
+			memList += m.id+":";
+		}
+		return memList;
+	}
+	
+	public String makeRoomList() {
+		String roomList = "";
+		for(String key : rooms.keySet()) {
+			if(key.equals("main"))
+				continue;
+			roomList += key+":";
+		}
+		return roomList;
+	}
+	
+	public void sendToAll(String code, String roomName, String msg) {
+		try {
+			for(String key : rooms.keySet()) {
+				List<Member> mems = rooms.get(key);
+				for(Member m : mems) {
+					PrintWriter writer = new PrintWriter(m.socket.getOutputStream());
+					if(roomName != null)
+						writer.println(code+"/"+roomName+"/"+msg);
+					else
+						writer.println(code+"/"+msg);
+					writer.flush();
+				}
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void sendToMember(String code, String roomName, String msg) {
+		try {
+			List<Member> member = rooms.get(roomName);
+			for(int i=0; i<member.size(); i++) {
+				PrintWriter writer = new PrintWriter(member.get(i).socket.getOutputStream());
+				writer.println(code+"/"+roomName+"/"+msg);
+				writer.flush();
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
 	}
 }
